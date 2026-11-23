@@ -1,0 +1,78 @@
+[Ranges]
+
+# How far a whisper carries, in nodes.
+proximity_chat_whisper_range (Whisper range) int 5 1 1000
+
+# How far ordinary talk carries, in nodes.
+proximity_chat_say_range (Talk range) int 32 1 1000
+
+# How far a shout carries, in nodes.
+proximity_chat_shout_range (Shout range) int 96 1 1000
+
+# Up to this fraction of the range, messages arrive word for word. Beyond it,
+# more and more letters drop out until nothing is left at the full range.
+# 1 turns the garbling off: inside the range is perfect, outside is nothing.
+proximity_chat_clear_fraction (Clear part of the range) float 0.6 0 1
+
+# Walls muffle voices: each solid node between two players counts as this
+# many nodes of extra distance (half as much for glass, leaves, fences, slabs
+# and liquids, twice as much for wool). 0 lets voices through walls untouched.
+proximity_chat_wall_penalty (Extra distance per wall node) float 8 0 1000
+
+# Turn wall muffling off entirely (it costs a walk along the line between the
+# speaker and each listener in range, per message).
+proximity_chat_occlusion (Walls muffle voices) bool true
+
+[Talking]
+
+# Start a message with this to shout. Empty: only /shout.
+proximity_chat_shout_prefix (Shout prefix) string !
+
+# Start a message with this to whisper. Empty: only /whisper.
+proximity_chat_whisper_prefix (Whisper prefix) string ~
+
+# Who may talk to the whole server with /g:
+#   priv: players with the global_chat privilege (admins have it)
+#   all: everyone with shout
+#   off: nobody, there is no /g
+proximity_chat_global (Global chat with /g) enum priv priv,all,off
+
+# Make /me a nearby action that only people who can see you get.
+proximity_chat_override_me (Nearby /me) bool true
+
+# Tell listeners which way a faint or muffled voice came from
+# ("far away, to your left").
+proximity_chat_direction_hints (Direction hints) bool true
+
+# Tell players when nobody was close enough to hear them.
+proximity_chat_nobody_heard (Say when nobody heard) bool true
+
+# Explain proximity chat to each player the first time they join.
+proximity_chat_welcome (Welcome message) bool true
+
+[Speech bubbles]
+
+# Show what people say over their heads (players can turn them off for
+# themselves in /pchat).
+proximity_chat_bubbles (Speech bubbles) bool true
+
+# Show bubbles to people who hear the speaker through a wall. Off by default,
+# since a bubble floating through the wall gives away where they are.
+proximity_chat_bubbles_through_walls (Bubbles through walls) bool false
+
+# How long bubbles stay up, relative to the normal time (which is longer for
+# longer messages).
+proximity_chat_bubble_time (Bubble time) float 1 0.2 10
+
+[Voices]
+
+# Speak every message out loud in a babble voice that comes from the speaker,
+# fading with distance and muffled by walls (players can turn voices off for
+# themselves in /pchat).
+proximity_chat_babble (Babble voices) bool true
+
+# Volume of the babble voices.
+proximity_chat_babble_volume (Voice volume) float 1 0 2
+
+# A long message babbles for at most this many seconds.
+proximity_chat_babble_max_seconds (Longest babble) float 3 0.5 20
