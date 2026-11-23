@@ -109,29 +109,35 @@ end
 -- Speakers
 --------------------------------------------------------------------------------
 
+-- A name given by a mod, made safe to show: no escapes, and no "@", which
+-- core.format_chat_message would take for a placeholder.
+local function clean_name(name)
+	name = text.clean(name):gsub("@", "")
+	return name ~= "" and name or nil
+end
+
 -- Who is talking: a player name, a player or entity ObjectRef, or a position.
+-- Entities and positions go by the name the calling mod gives them (never by
+-- their nametag, which players can often set: a pet named "admin" mustn't
+-- look like a player talking), "Someone" otherwise.
 local function resolve(speaker, opts)
 	local kind = type(speaker)
+	local given = opts.name and clean_name(tostring(opts.name))
 	if kind == "string" then
 		local player = core.get_player_by_name(speaker)
 		if not player then
 			return nil
 		end
-		return {object = player, name = opts.name or speaker, player_name = speaker,
+		return {object = player, name = given or speaker, player_name = speaker,
 			key = speaker}
 	elseif kind == "table" and type(speaker.x) == "number" and not speaker.get_pos then
-		return {pos = vector.new(speaker), name = opts.name or S("Someone"), key = false}
+		return {pos = vector.new(speaker), name = given or S("Someone"), key = false}
 	elseif (kind == "userdata" or kind == "table") and speaker.get_pos and speaker:get_pos() then
 		if speaker:is_player() then
 			local pname = speaker:get_player_name()
-			return {object = speaker, name = opts.name or pname, player_name = pname, key = pname}
+			return {object = speaker, name = given or pname, player_name = pname, key = pname}
 		end
-		local name = opts.name
-		if not name then
-			local tag = speaker:get_properties().nametag
-			name = tag and tag ~= "" and text.clean(tag) or S("Someone")
-		end
-		return {object = speaker, name = name, key = speaker}
+		return {object = speaker, name = given or S("Someone"), key = speaker}
 	end
 	return nil
 end
@@ -148,9 +154,10 @@ speech.mouth_of = mouth_of
 -- Hearing
 --------------------------------------------------------------------------------
 
--- What `player` hears of something said at `mouth`, or nil if nothing.
-local function listen(sp, mode, mouth, player, range, clear)
-	local ear = acoustics.head_pos(player)
+-- What `player` (an ObjectRef, or nil with `ear` given) hears of something
+-- said at `mouth`, or nil if nothing.
+local function listen(sp, mode, mouth, player, range, clear, ear)
+	ear = ear or acoustics.head_pos(player)
 	if not ear then
 		return nil
 	end
@@ -164,7 +171,7 @@ local function listen(sp, mode, mouth, player, range, clear)
 	if #speech.modifiers > 0 then
 		-- Other mods' say: megaphones, earmuffs, radios...
 		local ctx = {speaker = sp.name, speaker_object = sp.object, listener = player,
-			listener_name = player:get_player_name(), mode = mode.name,
+			listener_name = player and player:get_player_name() or "", mode = mode.name,
 			distance = r.distance, range = range, clear = clear, wall_penalty = penalty,
 			extra = 0}
 		for _, modifier in ipairs(speech.modifiers) do
@@ -188,7 +195,7 @@ local function listen(sp, mode, mouth, player, range, clear)
 		return nil
 	end
 
-	if mode.occlusion and config.occlusion then
+	if mode.occlusion and config.occlusion and (mode.walls_block or penalty > 0) then
 		local limit
 		if mode.walls_block then
 			limit = 0.99
@@ -271,13 +278,21 @@ function speech.speak(speaker, message, mode_name, opts)
 		clear = math.min(opts.clear or opts.range * config.clear_fraction, range)
 	end
 
+	-- An entity shown only to some players (set_observers) is only heard by
+	-- them.
+	local audience
+	if sp.object and not sp.player_name and sp.object.get_observers
+			and sp.object:get_observers() ~= nil then
+		audience = sp.object:get_effective_observers()
+	end
+
 	-- Everyone who hears it, and the few versions they hear.
 	local heard, heard_by = {}, {}
 	local versions = {}
 	local players = core.get_connected_players()
 	for _, player in ipairs(players) do
 		local lname = player:get_player_name()
-		if lname ~= sp.player_name then
+		if lname ~= sp.player_name and (not audience or audience[lname]) then
 			local r = listen(sp, mode, mouth, player, range, clear)
 			if r then
 				r.name, r.player = lname, player
@@ -319,8 +334,9 @@ function speech.speak(speaker, message, mode_name, opts)
 	if not mode.global then
 		for _, player in ipairs(players) do
 			local pname = player:get_player_name()
-			if pname ~= sp.player_name and not heard_by[pname] and prefs.get(pname, "spy")
-					and core.check_player_privs(pname, {chat_spy = true}) then
+			local r = heard_by[pname]
+			if pname ~= sp.player_name and (not r or r.band < 1 or r.muffled)
+					and prefs.get(pname, "spy") and core.check_player_privs(pname, {chat_spy = true}) then
 				core.chat_send_player(pname, core.colorize("#8a8a8a",
 					"[" .. S("spy") .. "] " .. core.strip_colors(speech.line(sp, mode, own))))
 			end
@@ -370,6 +386,35 @@ function speech.speak(speaker, message, mode_name, opts)
 	return #heard
 end
 
+-- How well `listener` would hear `speaker` (each a player name, ObjectRef or
+-- position) in a mode, by exactly the rules speak() uses: clarity (0..1, nil
+-- if out of earshot), muffled, effective distance.
+function speech.hearing(speaker, listener, mode_name)
+	local mode = modes.registered[mode_name or "say"]
+	local sp = mode and resolve(speaker, {})
+	local mouth = sp and mouth_of(sp)
+	if not mouth then
+		return nil
+	end
+	local player, ear
+	if type(listener) == "string" then
+		player = core.get_player_by_name(listener)
+	elseif type(listener) == "table" and type(listener.x) == "number" and not listener.get_pos then
+		ear = listener
+	else
+		player = listener
+	end
+	if not ear and not (player and player.get_pos and player:get_pos()) then
+		return nil
+	end
+	local range, clear = modes.ranges(mode)
+	local r = listen(sp, mode, mouth, player, range, clear, ear)
+	if not r then
+		return nil, false
+	end
+	return r.clarity, r.muffled, r.effective
+end
+
 -- Split a typed message into its mode and the words: "!help" shouts "help".
 function speech.parse(message)
 	for _, p in ipairs({{config.shout_prefix, "shout"}, {config.whisper_prefix, "whisper"}}) do
@@ -387,6 +432,11 @@ end
 -- The on_chat_message callback: everything typed that isn't a command.
 function speech.on_chat_message(name, message)
 	if message:sub(1, 1) == "/" then
+		return false
+	end
+	if not core.get_player_by_name(name) then
+		-- Not a player in the world: the server's terminal console. Let the
+		-- engine send it to everyone as before.
 		return false
 	end
 	if not core.check_player_privs(name, {shout = true}) then

@@ -37,7 +37,10 @@ function prefs.get(name, key)
 	local meta = meta_of(name)
 	if key == "pitch" then
 		local v = meta and tonumber(meta:get_string(PREFIX .. "pitch"))
-		return v or prefs.default_pitch(name)
+		if not v or v ~= v then -- missing, or NaN
+			return prefs.default_pitch(name)
+		end
+		return math.min(prefs.PITCH_MAX, math.max(prefs.PITCH_MIN, v))
 	end
 	local raw = meta and meta:get_string(PREFIX .. key) or ""
 	if raw == "" then
@@ -52,7 +55,11 @@ function prefs.set(name, key, value)
 		return false
 	end
 	if key == "pitch" then
-		value = math.min(prefs.PITCH_MAX, math.max(prefs.PITCH_MIN, tonumber(value) or 1))
+		value = tonumber(value)
+		if not value or value ~= value then -- "nan" is a number to tonumber
+			return false
+		end
+		value = math.min(prefs.PITCH_MAX, math.max(prefs.PITCH_MIN, value))
 		meta:set_string(PREFIX .. "pitch", ("%.2f"):format(value))
 	elseif value == nil then
 		meta:set_string(PREFIX .. key, "")

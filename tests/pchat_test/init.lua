@@ -165,6 +165,10 @@ local steps = {
 		check(last("bob") == "<alice> (whispers) psst, bob", "a whisper at 2.5 nodes: " .. last("bob"))
 		shot("bob", "whisper")
 	end,
+	function()
+		PC.show_settings("bob")
+		shot("bob", "settings")
+	end,
 }
 
 local function run(i)

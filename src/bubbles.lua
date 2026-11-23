@@ -85,11 +85,24 @@ local function layout(parent)
 			tag_lines = 1 -- an empty player nametag shows the name
 		end
 	end
-	-- The child's offset is in the parent's model units (x10) and is scaled by
-	-- the parent's visual size; the nametag point is 0.3 above both origins.
+	-- The child's offset is in the parent's model units (x10), and the client
+	-- scales it with the parent's scene node: by visual_size for meshes, cubes
+	-- and nodes, by half of it for items, not at all for sprites. The nametag
+	-- point is 0.3 above both origins either way.
 	local vs = props.visual_size
-	local scale = vs and vs.y and vs.y ~= 0 and vs.y or 1
-	return top * 10 / scale, tag_lines
+	local scale = 1
+	if vs and vs.y and vs.y ~= 0 then
+		local visual = props.visual
+		if visual == "mesh" or visual == "cube" or visual == "node" then
+			scale = vs.y
+		elseif visual == "item" or visual == "wielditem" then
+			scale = vs.y / 2
+		end
+	end
+	-- Same font as the parent's nametag, or the lines wouldn't line up.
+	local font = {nametag_fontsize = props.nametag_fontsize or false,
+		nametag_scale_z = props.nametag_scale_z or false}
+	return top * 10 / scale, tag_lines, font
 end
 
 local function attach(carrier, parent, y)
@@ -186,8 +199,9 @@ local function refresh(key, st, t)
 		end
 	end
 
-	local y, tag_lines = layout(parent)
+	local y, tag_lines, font = layout(parent)
 	st.y, st.tag_lines = y, tag_lines
+	st.font = tostring(font.nametag_fontsize) .. "/" .. tostring(font.nametag_scale_z)
 	local pad = tag_lines > 0 and tag_lines + 1 or 0
 
 	-- Keep carriers already showing the right text, reuse the others.
@@ -258,9 +272,13 @@ local function refresh(key, st, t)
 				c.who, c.observers = who, group.names
 			end
 			local nametag = content .. ("\n"):rep(group.lines + pad)
-			if c.nametag ~= nametag then
-				obj:set_properties({nametag = nametag})
-				c.nametag = nametag
+			if c.nametag ~= nametag or c.font ~= st.font then
+				obj:set_properties({
+					nametag = nametag,
+					nametag_fontsize = font.nametag_fontsize,
+					nametag_scale_z = font.nametag_scale_z,
+				})
+				c.nametag, c.font = nametag, st.font
 			end
 			if c.y ~= y or obj:get_attach() ~= parent then
 				attach(obj, parent, y)
@@ -343,8 +361,9 @@ core.register_globalstep(function(dtime)
 			end
 		end
 		if not stale then
-			local y, tag_lines = layout(st.parent)
+			local y, tag_lines, font = layout(st.parent)
 			stale = y ~= st.y or tag_lines ~= st.tag_lines
+				or tostring(font.nametag_fontsize) .. "/" .. tostring(font.nametag_scale_z) ~= st.font
 			for _, c in pairs(st.carriers) do
 				if not valid(c.object) or c.object:get_attach() ~= st.parent then
 					stale = true

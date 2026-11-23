@@ -59,6 +59,8 @@ function Object:set_observers(set)
 	for k in pairs(set or {}) do copy[k] = true end
 	self.observers = copy
 end
+function Object:get_observers() return self.observers end
+function Object:get_effective_observers() return self.observers end
 function Object:set_attach(parent, bone, pos, rot)
 	self.attached = {parent = parent, bone = bone, pos = pos, rot = rot}
 end

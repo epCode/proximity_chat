@@ -81,31 +81,11 @@ function PC.register_hearing_modifier(callback)
 	table.insert(speech.modifiers, callback)
 end
 
--- How well `listener` would hear `speaker` (ObjectRefs or positions) in a mode:
--- returns clarity (0..1, nil if out of earshot), muffled, effective distance.
+-- How well `listener` would hear `speaker` (player names, ObjectRefs or
+-- positions) in a mode, by the same rules as speak(): clarity (0..1, nil if
+-- out of earshot), muffled, effective distance.
 function PC.hearing(speaker, listener, mode_name)
-	local mode = modes.registered[mode_name or "say"]
-	local function pos_of(x)
-		if type(x) == "table" and type(x.x) == "number" and not x.get_pos then
-			return x
-		end
-		return acoustics.head_pos(x)
-	end
-	local a, b = pos_of(speaker), pos_of(listener)
-	if not mode or not a or not b then
-		return nil
-	end
-	local range, clear = modes.ranges(mode)
-	local distance = vector.distance(a, b)
-	if distance > range then
-		return nil, false, distance
-	end
-	local walls = 0
-	if mode.occlusion and config.occlusion then
-		walls = acoustics.obstruction(a, b)
-	end
-	local effective = distance + walls * config.wall_penalty
-	return acoustics.clarity(effective, range, clear), walls >= 0.5, effective
+	return speech.hearing(speaker, listener, mode_name)
 end
 
 function PC.get_pref(name, key)

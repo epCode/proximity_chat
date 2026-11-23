@@ -165,28 +165,27 @@ end
 local function show_settings(name)
 	local pitch = prefs.get(name, "pitch")
 	local spy = core.check_player_privs(name, {chat_spy = true})
-	local height = spy and 10.1 or 9.4
 	local fs = {
 		"formspec_version[6]",
-		("size[11,%s]"):format(height),
+		"size[11,10.4]",
 		"label[0.5,0.6;", esc(S("Proximity chat")), "]",
-		"textarea[0.5,1;10,4.2;;;", esc(help_text(name)), "]",
-		"checkbox[0.5,5.7;bubbles;", esc(S("Show speech bubbles over people talking")), ";",
+		"textarea[0.5,1;10,4.6;;;", esc(help_text(name)), "]",
+		"checkbox[0.5,6.1;bubbles;", esc(S("Show speech bubbles over people talking")), ";",
 			tostring(prefs.get(name, "bubbles")), "]",
-		"checkbox[0.5,6.3;voices;", esc(S("Hear people's voices")), ";",
+		"checkbox[0.5,6.7;voices;", esc(S("Hear people's voices")), ";",
 			tostring(prefs.get(name, "voices")), "]",
-		"checkbox[0.5,6.9;own_voice;", esc(S("Hear my own voice")), ";",
+		"checkbox[0.5,7.3;own_voice;", esc(S("Hear my own voice")), ";",
 			tostring(prefs.get(name, "own_voice")), "]",
-		"label[0.5,7.7;", esc(S("My voice: low to high")), "]",
+		"label[0.5,8.1;", esc(S("My voice: low to high")), "]",
 		"scrollbaroptions[min=50;max=200;smallstep=5;largestep=25]",
-		("scrollbar[0.5,8;7,0.6;horizontal;pitch;%d]"):format(math.floor(pitch * 100 + 0.5)),
-		"button[7.8,7.9;2.7,0.8;test;", esc(S("Try it")), "]",
+		("scrollbar[0.5,8.4;6.8,0.6;horizontal;pitch;%d]"):format(math.floor(pitch * 100 + 0.5)),
+		"button[7.7,8.3;2.8,0.8;test;", esc(S("Try it")), "]",
 	}
 	if spy then
-		fs[#fs + 1] = "checkbox[0.5,9.2;spy;" .. esc(S("Spy: read all nearby chat on the server")) .. ";"
+		fs[#fs + 1] = "checkbox[0.5,9.8;spy;" .. esc(S("Spy: read all nearby chat on the server")) .. ";"
 			.. tostring(prefs.get(name, "spy")) .. "]"
 	end
-	fs[#fs + 1] = ("button_exit[8.3,%s;2.2,0.8;close;%s]"):format(height - 1.1, esc(S("Close")))
+	fs[#fs + 1] = "button_exit[8.3,9.4;2.2,0.8;close;" .. esc(S("Close")) .. "]"
 	core.show_formspec(name, FORMNAME, table.concat(fs))
 end
 PC.show_settings = show_settings
@@ -230,7 +229,9 @@ local function toggle(name, key, arg, on_msg, off_msg)
 	else
 		return false, S("Say on or off.")
 	end
-	prefs.set(name, key, value)
+	if not prefs.set(name, key, value) then
+		return false, S("You need to be online.")
+	end
 	return true, value and on_msg or off_msg
 end
 
@@ -263,16 +264,20 @@ core.register_chatcommand("pchat", {
 			return toggle(name, "spy", arg, S("You read all nearby chat."),
 				S("You only read chat you can hear."))
 		elseif cmd == "pitch" then
-			local value = tonumber(arg)
-			if not value then
+			if arg == "" then
 				return true, S("Your voice pitch is @1.", math.floor(prefs.get(name, "pitch") * 100 + 0.5))
+			end
+			local value = tonumber(arg)
+			if not value or value ~= value then
+				return false, S("Give a number from 50 (low) to 200 (high).")
 			end
 			if value > 5 then
 				value = value / 100 -- 120 means 1.2
 			end
-			if not prefs.set(name, "pitch", value) then
+			if not core.get_player_by_name(name) then
 				return false, S("You need to be online.")
 			end
+			prefs.set(name, "pitch", value)
 			PC.voice.preview(name, prefs.get(name, "pitch"))
 			return true, S("Your voice pitch is @1.", math.floor(prefs.get(name, "pitch") * 100 + 0.5))
 		end

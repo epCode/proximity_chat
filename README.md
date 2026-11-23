@@ -132,6 +132,9 @@ Every message is logged as `CHAT: <name> message [mode, heard by N]`.
 proximity_chat.speak(guard_object, "Halt! Who goes there?", "shout", {name = "Guard"})
 proximity_chat.speak(pos, "Ding dong", "say", {name = "Bell", pitch = 0.6})
 -- opts: name, pitch, range, clear. Returns the number of players who heard it.
+-- Without opts.name an entity speaks as "Someone" (never by its nametag, which
+-- players can often set), and an entity hidden from some players with
+-- set_observers is only heard by the players who can see it.
 
 -- A new way of talking (fields as in src/modes.lua):
 proximity_chat.register_mode("radio", {range = 500, garble = false, occlusion = false,

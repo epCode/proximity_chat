@@ -77,19 +77,36 @@ function voice.speak(sp, msg, mode, listeners, seed, pitch)
 	end
 end
 
+-- Positions are looked up once per server step, however many syllables
+-- and listeners there are.
+local ears, mouths
+
+local function ear_of(name)
+	local ear = ears[name]
+	if ear == nil then
+		local player = core.get_player_by_name(name)
+		ear = player and acoustics.head_pos(player) or false
+		ears[name] = ear
+	end
+	return ear
+end
+
 local function play(ev)
 	local u = ev.u
 	if u.dead then
 		return
 	end
-	local mouth = mouth_of(u.sp)
+	local mouth = mouths[u]
+	if mouth == nil then
+		mouth = mouth_of(u.sp) or false
+		mouths[u] = mouth
+	end
 	if not mouth then
 		u.dead = true -- the speaker is gone; so is the rest of the sentence
 		return
 	end
 	for _, l in ipairs(u.listeners) do
-		local player = core.get_player_by_name(l.name)
-		local ear = player and acoustics.head_pos(player)
+		local ear = ear_of(l.name)
 		if ear then
 			local dx, dy, dz = mouth.x - ear.x, mouth.y - ear.y, mouth.z - ear.z
 			local d = math.sqrt(dx * dx + dy * dy + dz * dz)
@@ -118,6 +135,7 @@ core.register_globalstep(function()
 	end
 	local t = now()
 	local keep = {}
+	ears, mouths = {}, {}
 	for _, ev in ipairs(queue) do
 		if ev.time <= t then
 			play(ev)
@@ -128,15 +146,23 @@ core.register_globalstep(function()
 	queue = keep
 end)
 
--- Let a player hear what a pitch sounds like.
+-- Let a player hear what a pitch sounds like (not more than once every two
+-- seconds: the button could otherwise be used to flood the server).
+local last_preview = {}
 function voice.preview(name, pitch)
 	local player = core.get_player_by_name(name)
-	if not player then
+	local t = now()
+	if not player or (last_preview[name] or -math.huge) > t - 2 then
 		return
 	end
+	last_preview[name] = t
 	local sp = {object = player, name = name, player_name = name}
 	voice.speak(sp, "Hello there! How does this sound?", PC.modes.say,
 		{{name = name, clarity = 1}}, text.hash(name), pitch)
 end
+
+core.register_on_leaveplayer(function(player)
+	last_preview[player:get_player_name()] = nil
+end)
 
 return voice

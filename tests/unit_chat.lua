@@ -272,7 +272,9 @@ stub.say("alice", "lower")
 t.eq(last("bob"), "<alice> LOWER", "and change it")
 local heard_by = {}
 PC.register_on_hear(function(name, heard) heard_by[name] = heard end)
+local modifier_on = true
 PC.register_hearing_modifier(function(ctx)
+	if not modifier_on then return end
 	if ctx.listener_name == "bob" and ctx.mode == "say" then ctx.deaf = true end
 	if ctx.listener_name == "dave" and ctx.mode == "say" then ctx.range = 100 end
 end)
@@ -282,7 +284,105 @@ t.eq(#stub.lines_for("bob"), 0, "a modifier can make someone deaf")
 t.eq(last("dave"), "<alice> megaphone", "or carry a voice further (the clear part grows with it)")
 t.ok(heard_by.carol and heard_by.carol.original == "megaphone" and heard_by.carol.clarity < 1,
 	"on_hear reports what was heard")
+modifier_on = false
 local clarity, muffled2 = PC.hearing(alice, carol, "say")
 t.ok(clarity and clarity < 1 and not muffled2, "PC.hearing answers for any two places")
+
+t.section("review fixes")
+-- Where the bubble goes depends on how the client scales the parent's model.
+stub.step(20)
+local function carrier_y(props)
+	for k, v in pairs(props) do alice.props[k] = v end
+	stub.entities = {}
+	stub.say("alice", "where am I")
+	local y
+	for _, e in ipairs(stub.entities) do
+		if not e.removed and e.attached then y = e.attached.pos.y end
+	end
+	stub.step(20)
+	return y
+end
+t.ok(math.abs(carrier_y({visual = "upright_sprite", visual_size = {x = 1, y = 2, z = 1}}) - 17.7) < 1e-6,
+	"upright sprites aren't scaled: the engine's default player")
+t.ok(math.abs(carrier_y({visual = "mesh", visual_size = {x = 2, y = 2, z = 2}}) - 8.85) < 1e-6,
+	"meshes scale the offset by visual_size")
+t.ok(math.abs(carrier_y({visual = "wielditem", visual_size = {x = 2, y = 2, z = 2}}) - 17.7) < 1e-6,
+	"items by half of it")
+alice.props.visual, alice.props.visual_size = nil, {x = 1, y = 1, z = 1}
+alice.props.nametag_fontsize, alice.props.nametag_scale_z = 30, true
+stub.entities = {}
+stub.say("alice", "big font")
+t.ok(stub.entities[1] and stub.entities[1].props.nametag_fontsize == 30
+	and stub.entities[1].props.nametag_scale_z == true, "bubbles copy the speaker's nametag font")
+alice.props.nametag_fontsize, alice.props.nametag_scale_z = nil, nil
+stub.step(20)
+
+-- wall_penalty 0: walls make no difference at all.
+PC.config.wall_penalty = 0
+stub.wall(5, -1, 3, -2, 2)
+stub.clear()
+stub.say("alice", "no walls")
+t.eq(last("bob"), "<alice> no walls", "wall_penalty 0 leaves voices untouched")
+PC.config.wall_penalty = 8
+stub.nodes = {}
+
+-- A spy who heard a garbled copy also gets the words.
+stub.clear()
+stub.privs.carol.chat_spy = true
+PC.set_pref("carol", "spy", true)
+stub.say("alice", "the password is swordfish")
+local spy_lines = stub.lines_for("carol")
+t.eq(#spy_lines, 2, "a spy in earshot gets their garbled copy and the clear one")
+t.eq(strip(spy_lines[2] or ""), "[spy] <alice> the password is swordfish", "")
+PC.set_pref("carol", "spy", false)
+
+-- NaN can't sneak past the pitch limits.
+local before = PC.get_pref("alice", "pitch")
+local ok, msg = core.registered_chatcommands.pchat.func("alice", "pitch nan")
+t.ok(not ok and PC.get_pref("alice", "pitch") == before, "/pchat pitch nan is refused")
+t.eq(PC.set_pref("alice", "pitch", 0 / 0), false, "set_pref refuses NaN")
+t.eq(select(1, core.registered_chatcommands.pchat.func("nobody", "bubbles off")), false,
+	"toggles for players who aren't online say so")
+
+-- Entities shown to some players only are heard by them only.
+local ghost = stub.add_object(5, 0, 0, {collisionbox = {-0.3, 0, -0.3, 0.3, 1.8, 0.3}})
+ghost.observers = {bob = true}
+stub.clear()
+t.eq(PC.speak(ghost, "boo", "say", {name = "Ghost"}), 1, "a ghost only bob can see is heard by bob only")
+t.eq(#stub.lines_for("alice"), 0, "")
+
+-- Entity names come from the calling mod, never from nametags.
+local pet = stub.add_object(5, 0, 0, {collisionbox = {-0.3, 0, -0.3, 0.3, 1, 0.3}, nametag = "admin"})
+stub.clear()
+PC.speak(pet, "give me your password")
+t.eq(last("bob"), "<Someone> give me your password", "a pet named admin doesn't talk as admin")
+PC.speak(pet, "hi", "say", {name = "x@message"})
+t.eq(last("bob"), "<xmessage> hi", "@ is taken out of given names")
+
+-- hearing() follows the same rules as speaking.
+stub.wall(5, -1, 3, -2, 2)
+t.eq(PC.hearing(alice, bob, "emote"), nil, "hearing(): a wall hides an emote")
+local cl, mu = PC.hearing("alice", "bob", "say")
+t.ok(cl == 1 and mu == true, "hearing(): talk through one wall is clear but muffled")
+stub.nodes = {}
+
+-- The server console's chat goes through untouched.
+local console = core.registered_on_chat_messages[#core.registered_on_chat_messages]
+t.eq(console("admin_console", "hello from the terminal"), false, "chat from a non-player is left to the engine")
+
+-- Try it can't be spammed.
+stub.clear()
+PC.voice.preview("alice", 1)
+PC.voice.preview("alice", 1)
+stub.step(5)
+local n1 = #stub.sounds
+stub.clear()
+PC.voice.preview("alice", 1)
+stub.step(5)
+t.ok(n1 > 0 and #stub.sounds > 0, "previews play")
+stub.clear()
+for _ = 1, 20 do PC.voice.preview("alice", 1) end
+stub.step(5)
+t.ok(#stub.sounds <= n1, "twenty clicks in a row play it once")
 
 os.exit(t.finish())
