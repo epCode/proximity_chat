@@ -11,7 +11,10 @@ and turn around.
 
 It's a plain server mod. Players don't install anything, there is no external
 program, and it works in any game (tested with Minetest Game and VoxeLibre).
-Needs Luanti 5.9 or newer.
+The server needs Luanti 5.9 or newer, and 5.10 or newer for speech bubbles (on
+5.9 everything else works and bubbles stay off). Players can join with any
+client that can connect to the server: they get the voice sounds
+automatically, as with any mod.
 
 ## Talking
 

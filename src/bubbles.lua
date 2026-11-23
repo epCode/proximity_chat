@@ -118,7 +118,7 @@ local function spawn(parent, y)
 	if not obj.set_observers then
 		disabled = true
 		obj:remove()
-		core.log("warning", "[proximity_chat] this engine has no set_observers (Luanti 5.9+); "
+		core.log("warning", "[proximity_chat] this engine has no set_observers (Luanti 5.10+); "
 			.. "speech bubbles are off")
 		return nil
 	end
